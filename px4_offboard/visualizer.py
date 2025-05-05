@@ -34,6 +34,8 @@
 
 __author__ = "Jaeyoung Lim"
 __contact__ = "jalim@ethz.ch"
+__modified_by__ = "Jinrae Kim, kjl950403@gmail.com"
+__modified_note__ = "Implemented different tracking modes for comparison. Visualizer also changed accordingly."
 
 from re import M
 import numpy as np
@@ -71,8 +73,8 @@ class PX4Visualizer(Node):
 
         # Configure subscritpions
         qos_profile = QoSProfile(
-            reliability=QoSReliabilityPolicy.RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT,
-            history=QoSHistoryPolicy.RMW_QOS_POLICY_HISTORY_KEEP_LAST,
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            history=QoSHistoryPolicy.KEEP_LAST,
             depth=1,
         )
 
@@ -88,10 +90,10 @@ class PX4Visualizer(Node):
             self.vehicle_local_position_callback,
             qos_profile,
         )
-        self.setpoint_sub = self.create_subscription(
-            TrajectorySetpoint,
-            "/fmu/in/trajectory_setpoint",
-            self.trajectory_setpoint_callback,
+        self.desired_position_sub = self.create_subscription(
+            Point,
+            "/desired_position",
+            self.desired_position_callback,
             qos_profile,
         )
 
@@ -116,7 +118,7 @@ class PX4Visualizer(Node):
         self.setpoint_path_msg = Path()
 
         # trail size
-        self.trail_size = 1000
+        self.trail_size = 50
 
         # time stamp for the last local position update received on ROS2 topic
         self.last_local_pos_update = 0.0
@@ -155,10 +157,10 @@ class PX4Visualizer(Node):
         self.vehicle_local_velocity[1] = -msg.vy
         self.vehicle_local_velocity[2] = -msg.vz
 
-    def trajectory_setpoint_callback(self, msg):
-        self.setpoint_position[0] = msg.position[0]
-        self.setpoint_position[1] = -msg.position[1]
-        self.setpoint_position[2] = -msg.position[2]
+    def desired_position_callback(self, msg):
+        self.setpoint_position[0] = msg.x
+        self.setpoint_position[1] = -msg.y
+        self.setpoint_position[2] = -msg.z
 
     def create_arrow_marker(self, id, tail, vector):
         msg = Marker()
@@ -209,13 +211,17 @@ class PX4Visualizer(Node):
         self.vehicle_path_pub.publish(self.vehicle_path_msg)
 
         # Publish time history of the vehicle path
-        setpoint_pose_msg = vector2PoseMsg("map", self.setpoint_position, self.vehicle_attitude)
+        setpoint_pose_msg = vector2PoseMsg(
+            "map", self.setpoint_position, self.vehicle_attitude
+        )
         self.setpoint_path_msg.header = setpoint_pose_msg.header
         self.append_setpoint_path(setpoint_pose_msg)
         self.setpoint_path_pub.publish(self.setpoint_path_msg)
 
         # Publish arrow markers for velocity
-        velocity_msg = self.create_arrow_marker(1, self.vehicle_local_position, self.vehicle_local_velocity)
+        velocity_msg = self.create_arrow_marker(
+            1, self.vehicle_local_position, self.vehicle_local_velocity
+        )
         self.vehicle_vel_pub.publish(velocity_msg)
 
 
